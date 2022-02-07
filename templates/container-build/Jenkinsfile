@@ -1,0 +1,33 @@
+library 'cb-days@master'
+pipeline {
+  agent none
+  options { 
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    skipDefaultCheckout true
+    preserveStashes(buildCount: 10)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+    repository = "${repository}"
+  }
+  stages('Container build')
+  {
+    stage('Build and Push Image') {
+      when {
+        beforeAgent true
+        anyOf {
+          branch 'main';
+          branch 'master'
+        }
+      }
+      steps { 
+        kanikoBuildPushGeneric("${repository}", "latest", "${gcpProject}/${repoOwner}")
+        {
+          checkout scm
+        }
+      }
+    } 
+  }
+}
+

@@ -1,0 +1,66 @@
+library 'cb-days@master'
+def testPodYaml = libraryResource 'podtemplates/react/react-test-pod.yml'
+pipeline {
+  agent none
+  options { 
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    skipDefaultCheckout true
+    preserveStashes(buildCount: 10)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+    repository = "${repository}"
+  }
+  stages('React Test and Build')
+  {
+    stage('React Tests') {
+      agent {
+        kubernetes {
+          label 'nodejs'
+          yaml testPodYaml
+       }
+      }
+      steps {
+            checkout scm           
+            container('nodejs') {
+              sh '''
+                 npm install
+                 '''
+            }
+      } 
+    }
+    stage('Build and Push Image') {
+      when {
+        beforeAgent true
+        anyOf {
+          branch 'main';
+          branch 'master'
+        }
+      }
+      steps { 
+        kanikoBuildPushGeneric("${repository}", "latest", "${gcpProject}/${repoOwner}")
+        {
+          checkout scm
+        }
+      }
+    } 
+    stage("Trigger CD release") {
+        when {
+            beforeAgent true
+            branch 'main'
+        }
+        agent any
+        steps {
+            script {
+                node() {
+                    checkout scm
+                    imageTag = env.VERSION
+                    cloudBeesFlowTriggerRelease configuration: 'CD', parameters: '{"release":{"releaseName":"' + targetReleaseName + '","stages":"[{\\"stageName\\": \\"Pre-Production\\", \\"stageValue\\": true}, {\\"stageName\\": \\"Production\\", \\"stageValue\\": true}, {\\"stageName\\": \\"Quality Assurance\\", \\"stageValue\\": true}, {\\"stageName\\": \\"Release Readiness\\", \\"stageValue\\": true}]","parameters":"[]"}}', projectName: targetCDProject, releaseName: targetReleaseName, startingStage: 'Release Readiness'
+                }
+            }
+        }
+    }
+  }
+}
+

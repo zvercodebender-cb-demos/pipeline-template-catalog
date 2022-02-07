@@ -1,0 +1,39 @@
+  
+version: 1
+type: pipeline-template
+name: Feature Flag Demo Template
+templateType: MULTIBRANCH
+description: Build, Test and Push Image for Standard Python Applications. 
+parameters:
+  - name: username
+    displayName: Your username
+    type: string
+  - name: cbffApiKey
+    displayName: CB Feature Flag API Key
+    type: string
+  - name: repoOwner
+    type: string
+    displayName: Repository Owner
+    defaultValue: cb-demos
+  - name: repository
+    type: string
+    displayName: repository
+    defaultValue: news-demo
+  - name: githubCredentialId
+    displayName: GitHub Credential ID
+    type: CREDENTIALS
+  - name: registry
+    type: string
+    displayName: Docker registry
+    defaultValue: docker.cb-demos.io
+  - name: baseDomain
+    type: string
+    displayName: Base domain
+    defaultValue: cb-demos.io
+multibranch:
+  branchSource:
+    github:
+      id: Python
+      credentialsId: ${githubCredentialId}
+      repoOwner: ${repoOwner}
+      repository: ${repository}

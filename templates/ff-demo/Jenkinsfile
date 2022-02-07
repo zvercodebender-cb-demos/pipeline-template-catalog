@@ -1,0 +1,62 @@
+library 'cb-days@master'
+pipeline {
+  agent none
+  options { 
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    skipDefaultCheckout true
+    preserveStashes(buildCount: 2)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+  }
+  stages('Build images')
+  {
+    stage('Build and Push Backend image') {
+      when {
+        beforeAgent true
+        branch 'master'
+      }
+      steps { 
+        imgBuildNexusGeneric("news-backend", "${username}", "${registry}", "news-backend")
+        {
+          checkout scm
+        }
+      }
+    }
+    stage('Build and Push Frontend image') {
+      when {
+        beforeAgent true
+        branch 'master'
+      }
+      steps { 
+        imgBuildNexusGeneric("news-frontend", "${username}", "${registry}", "news-frontend")
+        {
+          checkout scm
+          sh "sed -i 's,REPLACE_BACKEND_URL,http://backend.${username}.${baseDomain},g' news-frontend/.env"
+          sh "sed -i 's,REPLACE_CB_FF_API_KEY,${cbffApiKey},g' news-frontend/.env"
+        }
+      }
+    }  
+    stage('Run Helm install') {
+      when {
+        beforeAgent true
+        branch 'master'
+      }
+      steps {
+        helmDeploy(){
+          sh"""
+          cd chart/charts/backend
+          helm dependency update
+          cd ../../..
+          helm upgrade --install ${username}-ff ./chart --set backend.ffKey=${cbffApiKey} --set backend.ingress.host=backend.${username}.${baseDomain} --set frontend.ingress.host=frontend.${username}.${baseDomain} --set backend.image.repository=${registry}/${username}/news-backend --set backend.image.tag=${env.BUILD_NUMBER} --set backend.imagePullSecrets[0].name=nexuscred --set frontend.image.repository=${registry}/${username}/news-frontend --set frontend.image.tag=${env.BUILD_NUMBER} --set frontend.imagePullSecrets[0].name=nexuscred
+          """
+          echo "Your frontend endpoint: http://frontend.${username}.${baseDomain}"
+          echo "Your backend endpoint: http://backend.${username}.${baseDomain}"
+          echo "Pull content to backend by hitting the following endpoint: http://backend.${username}.${baseDomain}/run-helper"
+        }
+      }
+    }
+  }
+}
+

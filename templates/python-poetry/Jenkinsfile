@@ -1,0 +1,56 @@
+library 'cb-days@master'
+def testPodYaml = libraryResource 'podtemplates/python39/python-test-pod.yml'
+pipeline {
+  agent none
+  options { 
+    buildDiscarder(logRotator(numToKeepStr: '2'))
+    skipDefaultCheckout true
+    preserveStashes(buildCount: 2)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+    repository = "${repository}"
+  }
+  stages('Python Test and Build')
+  {
+    stage('Python Tests') {
+      agent {
+        kubernetes {
+          label 'python'
+          yaml testPodYaml
+       }
+      }
+      steps {
+            checkout scm           
+            container('python') {
+              sh '''
+                 pip install poetry
+                 poetry install
+                 '''
+            }
+      } 
+    }
+    stage('Build and Push Image') {
+      when {
+        beforeAgent true
+        anyOf {
+          branch 'master';
+          branch 'main'
+        }
+      }
+      steps { 
+        kanikoBuildPushGeneric("${repository}", "latest", "${gcpProject}/${repoOwner}")
+        {
+          checkout scm
+        }
+      }
+      post {
+        success {
+          echo "${JOB_NAME} pipeline job is awaiting approval at: ${RUN_DISPLAY_URL}"
+        }
+      }
+    }  
+  }
+}
+

@@ -1,0 +1,50 @@
+library 'cb-days@master'
+def testPodYaml = libraryResource 'podtemplates/react/react-test-pod.yml'
+pipeline {
+  agent none
+  options { 
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    skipDefaultCheckout true
+    preserveStashes(buildCount: 10)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+    repository = "${repository}"
+  }
+  stages('React Test and Build')
+  {
+    stage('React Tests') {
+      agent {
+        kubernetes {
+          label 'nodejs'
+          yaml testPodYaml
+       }
+      }
+      steps {
+            checkout scm           
+            container('nodejs') {
+              sh '''
+                 npm install
+                 '''
+            }
+      } 
+    }
+    stage('Build and Push Image') {
+      when {
+        beforeAgent true
+        anyOf {
+          branch 'main';
+          branch 'master'
+        }
+      }
+      steps { 
+        kanikoBuildPushGeneric("${repository}", "latest", "${gcpProject}/${repoOwner}")
+        {
+          checkout scm
+        }
+      }
+    } 
+  }
+}
+

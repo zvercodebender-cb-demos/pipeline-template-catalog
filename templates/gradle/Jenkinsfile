@@ -1,0 +1,56 @@
+library 'pipeline-library'
+def testPodYaml = libraryResource 'podtemplates/gradle/pod.yaml'
+pipeline {
+  agent none
+  options {
+   timeout(time: 10, unit: 'MINUTES')
+   buildDiscarder(logRotator(numToKeepStr: '3'))
+   skipDefaultCheckout true
+   preserveStashes(buildCount: 3)
+  }
+  environment {
+    repoOwner = "${repoOwner}"
+    credId = "${githubCredentialId}"
+  }
+  stages ('Gradle Test & Build') 
+  {  
+    stage('Gradle Agent') {
+      agent {
+        kubernetes {
+          label 'gradle'
+          yaml  testPodYaml
+        }
+      }
+      stages {
+        stage ('Gradle Build') {
+          when {
+            beforeAgent true
+            anyOf {
+              branch 'main'
+              branch 'pr-*'
+            }
+          }
+          steps {
+            checkout scm
+            customYamlProps()
+            echo "jdk from cloudbees-ci.yaml: ${jdk}"
+            echo "line coverage from cloudbees-ci.yaml: ${lineCoverage}"
+            container ('gradle') {
+              sh './gradlew build'
+              }
+            }
+          }
+        stage ('Gradle Test & Reporting') {
+          steps {
+              sh './gradlew check'
+          }
+      post {
+        always {
+          junit 'build/reports/**/*.xml'
+            }
+          }  
+        }    
+      }
+    }
+  }
+}
